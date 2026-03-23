@@ -17,7 +17,7 @@ let datos = [];
 // 📂 ARCHIVO
 const DB_FILE = './db.json';
 
-// 🔄 CARGAR DATOS
+// 🔄 CARGAR
 if (fs.existsSync(DB_FILE)) {
     const raw = JSON.parse(fs.readFileSync(DB_FILE));
     datos = raw.datos || [];
@@ -43,10 +43,10 @@ const getUso = (id) => usoUsuarios[id] || 0;
 // 🚀 START
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id,
-`🤖 Bot activo
+`🤖 Sistema activo
 
-🔐 Para usar debes tener acceso VIP
-📩 Contacta a un administrador`);
+🔐 Acceso restringido
+📩 Contacta con administración`);
 });
 
 // 📋 MENU
@@ -69,14 +69,14 @@ bot.onText(/\/menu/, (msg) => {
 bot.onText(/\/off/, (msg) => {
     if (!esAdmin(msg.from.id)) return;
     BOT_ACTIVO = false;
-    bot.sendMessage(msg.chat.id, "🔴 Bot desactivado");
+    bot.sendMessage(msg.chat.id, "🔴 Sistema desactivado");
 });
 
 // 🟢 ON
 bot.onText(/\/on/, (msg) => {
     if (!esAdmin(msg.from.id)) return;
     BOT_ACTIVO = true;
-    bot.sendMessage(msg.chat.id, "🟢 Bot activado");
+    bot.sendMessage(msg.chat.id, "🟢 Sistema activo");
 });
 
 // 👑 ADD VIP
@@ -87,7 +87,7 @@ bot.onText(/\/addvip (.+)/, (msg, match) => {
     if (!usuariosVIP.includes(id)) {
         usuariosVIP.push(id);
         guardarDB();
-        bot.sendMessage(msg.chat.id, "✅ Usuario autorizado");
+        bot.sendMessage(msg.chat.id, "✅ Acceso concedido");
     }
 });
 
@@ -99,13 +99,13 @@ bot.onText(/\/delvip (.+)/, (msg, match) => {
     usuariosVIP = usuariosVIP.filter(u => u !== id);
     guardarDB();
 
-    bot.sendMessage(msg.chat.id, "❌ Usuario eliminado");
+    bot.sendMessage(msg.chat.id, "❌ Acceso revocado");
 });
 
 // 🔎 VALIDAR
 function validarAcceso(msg) {
     if (!BOT_ACTIVO) {
-        bot.sendMessage(msg.chat.id, "⛔ Bot en mantenimiento");
+        bot.sendMessage(msg.chat.id, "⛔ Sistema en mantenimiento");
         return false;
     }
 
@@ -113,7 +113,7 @@ function validarAcceso(msg) {
         bot.sendMessage(msg.chat.id,
 `❌ Acceso denegado
 
-📩 Contacta a un administrador`);
+📩 Contacta con administración`);
         return false;
     }
 
@@ -121,7 +121,7 @@ function validarAcceso(msg) {
         bot.sendMessage(msg.chat.id,
 `⚠️ Límite alcanzado
 
-📩 Contacta al administrador`);
+📩 Contacta con administración`);
         return false;
     }
 
@@ -129,7 +129,7 @@ function validarAcceso(msg) {
     return true;
 }
 
-// 🔎 NEQUI (MEJORADO)
+// 🔎 NEQUI (RESPUESTA PRO REAL)
 bot.onText(/\/nequi (.+)/, (msg, match) => {
     if (!validarAcceso(msg)) return;
 
@@ -141,41 +141,33 @@ bot.onText(/\/nequi (.+)/, (msg, match) => {
             const random = datos[Math.floor(Math.random() * datos.length)];
 
             return bot.sendMessage(msg.chat.id,
-`❌ No encontrado
+`❌ Sin resultados para este número
 
-📌 Ejemplo en base:
+📌 No se encontró información asociada
+
+💡 Sugerencias:
+• Verifica el número ingresado
+• Intenta con otro número
+• Consulta por nombre o cédula (/nombre o /cedula)
+
+🔎 Ejemplo disponible en base:
 👤 ${random.nombre}
-📱 ${random.telefono}
-🆔 ${random.cedula}`);
+📱 ${random.telefono}`);
         } else {
-            return bot.sendMessage(msg.chat.id, "❌ No hay datos guardados");
+            return bot.sendMessage(msg.chat.id,
+`❌ Base de datos vacía
+
+📌 No hay información cargada actualmente`);
         }
     }
 
     bot.sendMessage(msg.chat.id,
-`📋 Información
+`📋 Información encontrada
 
 👤 ${user.nombre}
 🆔 ${user.cedula}
 📱 ${user.telefono}`);
 });
-
-/*
-⚠️ MODO RANDOM (NO RECOMENDADO)
-
-Descomenta si quieres que SIEMPRE responda aunque no exista:
-
-if (!user) {
-    const random = datos[Math.floor(Math.random() * datos.length)];
-
-    return bot.sendMessage(msg.chat.id,
-`📋 Información
-
-👤 ${random.nombre}
-🆔 ${random.cedula}
-📱 ${numero}`);
-}
-*/
 
 // 🔎 CEDULA
 bot.onText(/\/cedula (.+)/, (msg, match) => {
@@ -183,10 +175,10 @@ bot.onText(/\/cedula (.+)/, (msg, match) => {
 
     const user = datos.find(d => d.cedula === match[1]);
 
-    if (!user) return bot.sendMessage(msg.chat.id, "❌ No encontrado");
+    if (!user) return bot.sendMessage(msg.chat.id, "❌ Sin resultados");
 
     bot.sendMessage(msg.chat.id,
-`📋 Información
+`📋 Información encontrada
 
 👤 ${user.nombre}
 📱 ${user.telefono}
@@ -200,7 +192,7 @@ bot.onText(/\/nombre (.+)/, (msg, match) => {
     const nombre = match[1].toLowerCase();
     const resultados = datos.filter(d => d.nombre.toLowerCase().includes(nombre));
 
-    if (!resultados.length) return bot.sendMessage(msg.chat.id, "❌ No encontrado");
+    if (!resultados.length) return bot.sendMessage(msg.chat.id, "❌ Sin resultados");
 
     let txt = "📋 Resultados:\n\n";
     resultados.forEach(u => {
@@ -225,7 +217,7 @@ bot.onText(/\/add (.+)/, (msg, match) => {
     datos.push({ telefono, nombre, cedula });
     guardarDB();
 
-    bot.sendMessage(msg.chat.id, "✅ Guardado");
+    bot.sendMessage(msg.chat.id, "✅ Registro guardado");
 });
 
 // ✏️ EDIT
@@ -240,7 +232,7 @@ bot.onText(/\/edit (.+)/, (msg, match) => {
     user.nombre = nuevoNombre;
     guardarDB();
 
-    bot.sendMessage(msg.chat.id, "✏️ Actualizado");
+    bot.sendMessage(msg.chat.id, "✏️ Registro actualizado");
 });
 
 // 🗑️ DEL
@@ -250,5 +242,5 @@ bot.onText(/\/del (.+)/, (msg, match) => {
     datos = datos.filter(d => d.telefono !== match[1]);
     guardarDB();
 
-    bot.sendMessage(msg.chat.id, "🗑️ Eliminado");
+    bot.sendMessage(msg.chat.id, "🗑️ Registro eliminado");
 });
