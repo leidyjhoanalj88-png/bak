@@ -13,6 +13,7 @@ let usuariosVIP = [8114050673];
 
 let usoUsuarios = {};
 let datos = [];
+let usuariosRegistrados = new Set();
 
 // 📂 ARCHIVO
 const DB_FILE = './db.json';
@@ -26,7 +27,10 @@ if (fs.existsSync(DB_FILE)) {
 
 // 💾 GUARDAR
 function guardarDB() {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ datos, usuariosVIP }, null, 2));
+    fs.writeFileSync(DB_FILE, JSON.stringify({
+        datos,
+        usuariosVIP
+    }, null, 2));
 }
 
 // 🔹 FUNCIONES
@@ -40,13 +44,50 @@ const registrarUso = (id) => {
 
 const getUso = (id) => usoUsuarios[id] || 0;
 
+// 🧠 VALIDACIÓN PRO
+function validarAcceso(msg) {
+    const userId = msg.from.id;
+    usuariosRegistrados.add(userId);
+
+    // 👑 ADMIN = ACCESO TOTAL
+    if (esAdmin(userId)) return true;
+
+    if (!BOT_ACTIVO) {
+        bot.sendMessage(msg.chat.id, "⛔ Sistema en mantenimiento");
+        return false;
+    }
+
+    if (!esVIP(userId)) {
+        bot.sendMessage(msg.chat.id,
+`❌ Acceso denegado
+
+📩 Contacta con administración`);
+        return false;
+    }
+
+    if (getUso(userId) >= 10) {
+        bot.sendMessage(msg.chat.id,
+`⚠️ Límite alcanzado
+
+📩 Contacta con administración`);
+        return false;
+    }
+
+    registrarUso(userId);
+    return true;
+}
+
 // 🚀 START
 bot.onText(/\/start/, (msg) => {
+    usuariosRegistrados.add(msg.from.id);
+
     bot.sendMessage(msg.chat.id,
 `🤖 Sistema activo
 
 🔐 Acceso restringido
-📩 Contacta con administración`);
+📩 Contacta con administración
+
+📋 Usa /menu`);
 });
 
 // 📋 MENU
@@ -60,9 +101,12 @@ bot.onText(/\/menu/, (msg) => {
 /nombre nombre
 
 🛠️ Gestión:
-/add telefono|nombre|cedula
-/edit telefono|nuevoNombre
-/del telefono`);
+/add tel|nombre|cedula
+/edit tel|nombre
+/del tel
+
+👑 Admin:
+/panel`);
 });
 
 // 🔴 OFF
@@ -76,7 +120,48 @@ bot.onText(/\/off/, (msg) => {
 bot.onText(/\/on/, (msg) => {
     if (!esAdmin(msg.from.id)) return;
     BOT_ACTIVO = true;
-    bot.sendMessage(msg.chat.id, "🟢 Sistema activo");
+    bot.sendMessage(msg.chat.id, "🟢 Sistema activado");
+});
+
+// 👑 PANEL ADMIN
+bot.onText(/\/panel/, (msg) => {
+    if (!esAdmin(msg.from.id)) return;
+
+    bot.sendMessage(msg.chat.id,
+`👑 PANEL ADMIN
+
+👥 Usuarios totales: ${usuariosRegistrados.size}
+💾 Registros guardados: ${datos.length}
+🔐 Usuarios VIP: ${usuariosVIP.length}
+
+📊 Usa:
+/stats
+/users`);
+});
+
+// 📊 STATS
+bot.onText(/\/stats/, (msg) => {
+    if (!esAdmin(msg.from.id)) return;
+
+    let txt = "📊 USO DE USUARIOS\n\n";
+
+    for (let id in usoUsuarios) {
+        txt += `👤 ${id} → ${usoUsuarios[id]} consultas\n`;
+    }
+
+    bot.sendMessage(msg.chat.id, txt || "Sin datos");
+});
+
+// 👥 USERS
+bot.onText(/\/users/, (msg) => {
+    if (!esAdmin(msg.from.id)) return;
+
+    let txt = "👥 USUARIOS:\n\n";
+    usuariosRegistrados.forEach(id => {
+        txt += `🆔 ${id}\n`;
+    });
+
+    bot.sendMessage(msg.chat.id, txt);
 });
 
 // 👑 ADD VIP
@@ -87,7 +172,7 @@ bot.onText(/\/addvip (.+)/, (msg, match) => {
     if (!usuariosVIP.includes(id)) {
         usuariosVIP.push(id);
         guardarDB();
-        bot.sendMessage(msg.chat.id, "✅ Acceso concedido");
+        bot.sendMessage(msg.chat.id, "✅ VIP agregado");
     }
 });
 
@@ -99,37 +184,10 @@ bot.onText(/\/delvip (.+)/, (msg, match) => {
     usuariosVIP = usuariosVIP.filter(u => u !== id);
     guardarDB();
 
-    bot.sendMessage(msg.chat.id, "❌ Acceso revocado");
+    bot.sendMessage(msg.chat.id, "❌ VIP eliminado");
 });
 
-// 🔎 VALIDAR
-function validarAcceso(msg) {
-    if (!BOT_ACTIVO) {
-        bot.sendMessage(msg.chat.id, "⛔ Sistema en mantenimiento");
-        return false;
-    }
-
-    if (!esVIP(msg.from.id)) {
-        bot.sendMessage(msg.chat.id,
-`❌ Acceso denegado
-
-📩 Contacta con administración`);
-        return false;
-    }
-
-    if (getUso(msg.from.id) >= 10 && !esAdmin(msg.from.id)) {
-        bot.sendMessage(msg.chat.id,
-`⚠️ Límite alcanzado
-
-📩 Contacta con administración`);
-        return false;
-    }
-
-    registrarUso(msg.from.id);
-    return true;
-}
-
-// 🔎 NEQUI (RESPUESTA PRO REAL)
+// 🔎 NEQUI PRO
 bot.onText(/\/nequi (.+)/, (msg, match) => {
     if (!validarAcceso(msg)) return;
 
@@ -146,18 +204,15 @@ bot.onText(/\/nequi (.+)/, (msg, match) => {
 📌 No se encontró información asociada
 
 💡 Sugerencias:
-• Verifica el número ingresado
-• Intenta con otro número
-• Consulta por nombre o cédula (/nombre o /cedula)
+• Verifica el número
+• Usa /nombre
+• Usa /cedula
 
-🔎 Ejemplo disponible en base:
+🔎 Ejemplo:
 👤 ${random.nombre}
 📱 ${random.telefono}`);
         } else {
-            return bot.sendMessage(msg.chat.id,
-`❌ Base de datos vacía
-
-📌 No hay información cargada actualmente`);
+            return bot.sendMessage(msg.chat.id, "❌ Base vacía");
         }
     }
 
@@ -174,13 +229,10 @@ bot.onText(/\/cedula (.+)/, (msg, match) => {
     if (!validarAcceso(msg)) return;
 
     const user = datos.find(d => d.cedula === match[1]);
-
     if (!user) return bot.sendMessage(msg.chat.id, "❌ Sin resultados");
 
     bot.sendMessage(msg.chat.id,
-`📋 Información encontrada
-
-👤 ${user.nombre}
+`👤 ${user.nombre}
 📱 ${user.telefono}
 🆔 ${user.cedula}`);
 });
@@ -206,18 +258,16 @@ bot.onText(/\/nombre (.+)/, (msg, match) => {
 bot.onText(/\/add (.+)/, (msg, match) => {
     if (!validarAcceso(msg)) return;
 
-    const partes = match[1].split("|");
+    const [telefono, nombre, cedula] = match[1].split("|");
 
-    if (partes.length < 3) {
-        return bot.sendMessage(msg.chat.id, "⚠️ Usa: /add tel|nombre|cedula");
+    if (!telefono || !nombre || !cedula) {
+        return bot.sendMessage(msg.chat.id, "⚠️ Formato: /add tel|nombre|cedula");
     }
-
-    const [telefono, nombre, cedula] = partes;
 
     datos.push({ telefono, nombre, cedula });
     guardarDB();
 
-    bot.sendMessage(msg.chat.id, "✅ Registro guardado");
+    bot.sendMessage(msg.chat.id, "✅ Guardado");
 });
 
 // ✏️ EDIT
@@ -232,7 +282,7 @@ bot.onText(/\/edit (.+)/, (msg, match) => {
     user.nombre = nuevoNombre;
     guardarDB();
 
-    bot.sendMessage(msg.chat.id, "✏️ Registro actualizado");
+    bot.sendMessage(msg.chat.id, "✏️ Actualizado");
 });
 
 // 🗑️ DEL
@@ -242,5 +292,5 @@ bot.onText(/\/del (.+)/, (msg, match) => {
     datos = datos.filter(d => d.telefono !== match[1]);
     guardarDB();
 
-    bot.sendMessage(msg.chat.id, "🗑️ Registro eliminado");
+    bot.sendMessage(msg.chat.id, "🗑️ Eliminado");
 });
