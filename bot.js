@@ -1,165 +1,226 @@
 require('dotenv').config();
+const fs = require('fs');
 const TelegramBot = require('node-telegram-bot-api');
 
 const token = process.env.TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-// 🔐 Usuarios VIP
-const usuariosVIP = [8114050673];
+// ⚙️ CONFIG
+let BOT_ACTIVO = true;
 
-// 🧠 Base de datos temporal (luego la pasamos a JSON o Mongo)
+const admins = [8114050673];
+let usuariosVIP = [8114050673];
+
+let usoUsuarios = {};
 let datos = [];
 
-// /start
+// 📂 ARCHIVO
+const DB_FILE = './db.json';
+
+// 🔄 CARGAR DATOS
+if (fs.existsSync(DB_FILE)) {
+    const raw = JSON.parse(fs.readFileSync(DB_FILE));
+    datos = raw.datos || [];
+    usuariosVIP = raw.usuariosVIP || usuariosVIP;
+}
+
+// 💾 GUARDAR
+function guardarDB() {
+    fs.writeFileSync(DB_FILE, JSON.stringify({ datos, usuariosVIP }, null, 2));
+}
+
+// 🔹 FUNCIONES
+const esAdmin = (id) => admins.includes(id);
+const esVIP = (id) => usuariosVIP.includes(id);
+
+const registrarUso = (id) => {
+    if (!usoUsuarios[id]) usoUsuarios[id] = 0;
+    usoUsuarios[id]++;
+};
+
+const getUso = (id) => usoUsuarios[id] || 0;
+
+// 🚀 START
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🤖 Bot activo\nUsa /menu para ver comandos");
+    bot.sendMessage(msg.chat.id,
+`🤖 Bot activo
+
+🔐 Para usar los comandos debes tener acceso
+📩 Contacta a un administrador`);
 });
 
-// 📋 Menú
+// 📋 MENÚ
 bot.onText(/\/menu/, (msg) => {
     bot.sendMessage(msg.chat.id,
 `📋 COMANDOS
 
+🔎 Consultas:
 /nequi numero
 /cedula documento
 /nombre nombre
 
+🛠️ Gestión:
 /add telefono|nombre|cedula
 /edit telefono|nuevoNombre
 /del telefono`);
 });
 
-// 🔐 Verificación VIP
-function esVIP(userId) {
-    return usuariosVIP.includes(userId);
-}
+// 🔴 OFF
+bot.onText(/\/off/, (msg) => {
+    if (!esAdmin(msg.from.id)) return;
 
-// 🔎 CONSULTAR POR TELÉFONO
-bot.onText(/\/nequi (.+)/, (msg, match) => {
-    const userId = msg.from.id;
-    const numero = match[1];
-
-    if (!esVIP(userId)) {
-        bot.sendMessage(msg.chat.id, "❌ Acceso denegado");
-        return;
-    }
-
-    const user = datos.find(d => d.telefono === numero);
-
-    if (!user) {
-        bot.sendMessage(msg.chat.id, "❌ No encontrado");
-        return;
-    }
-
-    bot.sendMessage(msg.chat.id,
-`📋 Información de Nequi
-
-👤 Nombre: ${user.nombre}
-🆔 Cédula: ${user.cedula}
-📱 Teléfono: ${user.telefono}`);
+    BOT_ACTIVO = false;
+    bot.sendMessage(msg.chat.id, "🔴 Bot desactivado");
 });
 
-// 🔎 CONSULTAR POR CÉDULA
-bot.onText(/\/cedula (.+)/, (msg, match) => {
-    const userId = msg.from.id;
-    const cedula = match[1];
+// 🟢 ON
+bot.onText(/\/on/, (msg) => {
+    if (!esAdmin(msg.from.id)) return;
 
-    if (!esVIP(userId)) {
-        bot.sendMessage(msg.chat.id, "❌ Acceso denegado");
-        return;
+    BOT_ACTIVO = true;
+    bot.sendMessage(msg.chat.id, "🟢 Bot activado");
+});
+
+// 👑 ADD VIP
+bot.onText(/\/addvip (.+)/, (msg, match) => {
+    if (!esAdmin(msg.from.id)) return;
+
+    const id = parseInt(match[1]);
+
+    if (!usuariosVIP.includes(id)) {
+        usuariosVIP.push(id);
+        guardarDB();
+        bot.sendMessage(msg.chat.id, "✅ Usuario autorizado");
+    }
+});
+
+// ❌ DEL VIP
+bot.onText(/\/delvip (.+)/, (msg, match) => {
+    if (!esAdmin(msg.from.id)) return;
+
+    const id = parseInt(match[1]);
+    usuariosVIP = usuariosVIP.filter(u => u !== id);
+    guardarDB();
+
+    bot.sendMessage(msg.chat.id, "❌ Usuario eliminado");
+});
+
+// 🔎 VALIDAR BOT
+function validarAcceso(msg) {
+    if (!BOT_ACTIVO) {
+        bot.sendMessage(msg.chat.id, "⛔ Bot en mantenimiento");
+        return false;
     }
 
-    const user = datos.find(d => d.cedula === cedula);
+    if (!esVIP(msg.from.id)) {
+        bot.sendMessage(msg.chat.id,
+`❌ Acceso denegado
 
-    if (!user) {
-        bot.sendMessage(msg.chat.id, "❌ No encontrado");
-        return;
+📩 Contacta a un administrador`);
+        return false;
     }
+
+    if (getUso(msg.from.id) >= 10 && !esAdmin(msg.from.id)) {
+        bot.sendMessage(msg.chat.id,
+`⚠️ Límite alcanzado
+
+📩 Contacta al administrador`);
+        return false;
+    }
+
+    registrarUso(msg.from.id);
+    return true;
+}
+
+// 🔎 NEQUI
+bot.onText(/\/nequi (.+)/, (msg, match) => {
+    if (!validarAcceso(msg)) return;
+
+    const numero = match[1];
+    const user = datos.find(d => d.telefono === numero);
+
+    if (!user) return bot.sendMessage(msg.chat.id, "❌ No encontrado");
 
     bot.sendMessage(msg.chat.id,
 `📋 Información
 
-👤 Nombre: ${user.nombre}
-📱 Teléfono: ${user.telefono}
-🆔 Cédula: ${user.cedula}`);
+👤 ${user.nombre}
+🆔 ${user.cedula}
+📱 ${user.telefono}`);
 });
 
-// 🔎 BUSCAR POR NOMBRE
+// 🔎 CÉDULA
+bot.onText(/\/cedula (.+)/, (msg, match) => {
+    if (!validarAcceso(msg)) return;
+
+    const user = datos.find(d => d.cedula === match[1]);
+
+    if (!user) return bot.sendMessage(msg.chat.id, "❌ No encontrado");
+
+    bot.sendMessage(msg.chat.id,
+`📋 Información
+
+👤 ${user.nombre}
+📱 ${user.telefono}
+🆔 ${user.cedula}`);
+});
+
+// 🔎 NOMBRE
 bot.onText(/\/nombre (.+)/, (msg, match) => {
-    const userId = msg.from.id;
+    if (!validarAcceso(msg)) return;
+
     const nombre = match[1].toLowerCase();
-
-    if (!esVIP(userId)) {
-        bot.sendMessage(msg.chat.id, "❌ Acceso denegado");
-        return;
-    }
-
     const resultados = datos.filter(d => d.nombre.toLowerCase().includes(nombre));
 
-    if (resultados.length === 0) {
-        bot.sendMessage(msg.chat.id, "❌ No encontrado");
-        return;
-    }
+    if (!resultados.length) return bot.sendMessage(msg.chat.id, "❌ No encontrado");
 
-    let respuesta = "📋 Resultados:\n\n";
+    let txt = "📋 Resultados:\n\n";
     resultados.forEach(u => {
-        respuesta += `👤 ${u.nombre}\n📱 ${u.telefono}\n🆔 ${u.cedula}\n\n`;
+        txt += `👤 ${u.nombre}\n📱 ${u.telefono}\n🆔 ${u.cedula}\n\n`;
     });
 
-    bot.sendMessage(msg.chat.id, respuesta);
+    bot.sendMessage(msg.chat.id, txt);
 });
 
-// ➕ AGREGAR DATOS
+// ➕ ADD
 bot.onText(/\/add (.+)/, (msg, match) => {
-    const userId = msg.from.id;
+    if (!validarAcceso(msg)) return;
 
-    if (!esVIP(userId)) {
-        bot.sendMessage(msg.chat.id, "❌ Acceso denegado");
-        return;
+    const partes = match[1].split("|");
+
+    if (partes.length < 3) {
+        return bot.sendMessage(msg.chat.id, "⚠️ Formato incorrecto\nEj: /add tel|nombre|cedula");
     }
 
-    const [telefono, nombre, cedula] = match[1].split("|");
+    const [telefono, nombre, cedula] = partes;
 
     datos.push({ telefono, nombre, cedula });
+    guardarDB();
 
-    bot.sendMessage(msg.chat.id, "✅ Datos guardados");
+    bot.sendMessage(msg.chat.id, "✅ Guardado");
 });
 
-// ✏️ EDITAR
+// ✏️ EDIT
 bot.onText(/\/edit (.+)/, (msg, match) => {
-    const userId = msg.from.id;
-
-    if (!esVIP(userId)) {
-        bot.sendMessage(msg.chat.id, "❌ Acceso denegado");
-        return;
-    }
+    if (!validarAcceso(msg)) return;
 
     const [telefono, nuevoNombre] = match[1].split("|");
-
     const user = datos.find(d => d.telefono === telefono);
 
-    if (!user) {
-        bot.sendMessage(msg.chat.id, "❌ No encontrado");
-        return;
-    }
+    if (!user) return bot.sendMessage(msg.chat.id, "❌ No encontrado");
 
     user.nombre = nuevoNombre;
+    guardarDB();
 
     bot.sendMessage(msg.chat.id, "✏️ Actualizado");
 });
 
-// 🗑️ ELIMINAR
+// 🗑️ DEL
 bot.onText(/\/del (.+)/, (msg, match) => {
-    const userId = msg.from.id;
+    if (!validarAcceso(msg)) return;
 
-    if (!esVIP(userId)) {
-        bot.sendMessage(msg.chat.id, "❌ Acceso denegado");
-        return;
-    }
-
-    const telefono = match[1];
-
-    datos = datos.filter(d => d.telefono !== telefono);
+    datos = datos.filter(d => d.telefono !== match[1]);
+    guardarDB();
 
     bot.sendMessage(msg.chat.id, "🗑️ Eliminado");
 });
