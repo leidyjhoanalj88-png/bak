@@ -2,155 +2,128 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
-// ===== CONFIG =====
-const TOKEN = process.env.TOKEN;
-const ADMIN_ID = process.env.ADMIN_ID;
+const token = process.env.TOKEN;
 const ABSTRACT_KEY = process.env.ABSTRACT_KEY;
 
-if (!TOKEN) {
-    console.log("❌ TOKEN NO DEFINIDO");
-    process.exit(1);
-}
+// 🔥 FIX RAILWAY (NO TOCAR)
+const bot = new TelegramBot(token);
+bot.deleteWebHook({ drop_pending_updates: true });
+bot.startPolling();
 
-// 🔥 IMPORTANTE: iniciar SIN polling primero
-const bot = new TelegramBot(TOKEN, { polling: false });
+// ===== VIP =====
+const usuariosVIP = [8114050673];
 
-// 🔥 LIMPIAR CONEXIONES VIEJAS Y ARRANCAR BIEN
-async function iniciarBot() {
-    try {
-        await bot.deleteWebHook({ drop_pending_updates: true });
-        await bot.startPolling();
+// ===== START =====
+bot.onText(/\/start/, (msg) => {
+    bot.sendMessage(msg.chat.id, `🤖 Bot activo
 
-        console.log("🔥 BOT INICIADO LIMPIO");
-    } catch (err) {
-        console.log("❌ ERROR INICIO:", err.message);
+Usa /menu`);
+});
+
+// ===== MENU =====
+bot.onText(/\/menu/, (msg) => {
+    bot.sendMessage(msg.chat.id, `
+📲 MENÚ PRINCIPAL
+═══════════════════
+🔍 /numero +573001234567
+🌐 /ip 8.8.8.8
+📧 /email correo@gmail.com
+💳 /nequi 3001234567
+═══════════════════`);
+});
+
+// ===== NEQUI (TU ORIGINAL) =====
+bot.onText(/\/nequi (.+)/, (msg, match) => {
+    const userId = msg.from.id;
+    const numero = match[1];
+
+    if (!usuariosVIP.includes(userId)) {
+        bot.sendMessage(msg.chat.id, "❌ Acceso denegado");
+        return;
     }
-}
 
-iniciarBot();
+    bot.sendMessage(msg.chat.id, `✅ Número: ${numero}`);
+});
 
-// ===== ESTADO =====
-let botActivo = true;
+// ===== CONSULTA NUMERO REAL =====
+bot.onText(/\/numero (.+)/, async (msg, match) => {
+    if (!usuariosVIP.includes(msg.from.id)) {
+        return bot.sendMessage(msg.chat.id, "❌ Solo VIP");
+    }
 
-// ===== FUNCIONES =====
+    const numero = match[1];
+    bot.sendMessage(msg.chat.id, "🔎 Consultando...");
 
-// 📞 CONSULTAR NÚMERO
-async function consultarNumero(numero) {
     try {
         const url = `https://phonevalidation.abstractapi.com/v1/?api_key=${ABSTRACT_KEY}&phone=${numero}`;
         const res = await axios.get(url);
         const d = res.data;
 
-        return `乄 CONSULTA DE NÚMERO
+        bot.sendMessage(msg.chat.id, `
+📞 RESULTADO
 ═══════════════════
-📞 Número: ${numero}
-
-🌍 País: ${d.country?.name || "No disponible"}
-📡 Operador: ${d.carrier || "No disponible"}
-📱 Tipo: ${d.type || "Desconocido"}
+📱 Número: ${numero}
+🌍 País: ${d.country?.name || "N/A"}
+📡 Operador: ${d.carrier || "N/A"}
+📶 Tipo: ${d.type || "N/A"}
 ✔️ Válido: ${d.valid}
-═══════════════════`;
+═══════════════════`);
     } catch {
-        return "❌ Error consultando número";
+        bot.sendMessage(msg.chat.id, "❌ Error en consulta");
     }
-}
+});
 
-// 🌐 IP
-async function infoIP(ip) {
+// ===== IP =====
+bot.onText(/\/ip (.+)/, async (msg, match) => {
+    if (!usuariosVIP.includes(msg.from.id)) {
+        return bot.sendMessage(msg.chat.id, "❌ Solo VIP");
+    }
+
+    const ip = match[1];
+
     try {
         const url = `https://ipgeolocation.abstractapi.com/v1/?api_key=${ABSTRACT_KEY}&ip_address=${ip}`;
         const res = await axios.get(url);
         const d = res.data;
 
-        return `🌐 INFO IP
+        bot.sendMessage(msg.chat.id, `
+🌐 INFO IP
 ═══════════════════
 🌍 País: ${d.country}
 🏙️ Ciudad: ${d.city}
 📡 ISP: ${d.connection?.isp_name}
 🔒 VPN: ${d.security?.is_vpn}
-═══════════════════`;
+═══════════════════`);
     } catch {
-        return "❌ Error consultando IP";
+        bot.sendMessage(msg.chat.id, "❌ Error IP");
     }
-}
+});
 
-// 📧 EMAIL
-async function validarEmail(email) {
+// ===== EMAIL =====
+bot.onText(/\/email (.+)/, async (msg, match) => {
+    if (!usuariosVIP.includes(msg.from.id)) {
+        return bot.sendMessage(msg.chat.id, "❌ Solo VIP");
+    }
+
+    const email = match[1];
+
     try {
         const url = `https://emailvalidation.abstractapi.com/v1/?api_key=${ABSTRACT_KEY}&email=${email}`;
         const res = await axios.get(url);
         const d = res.data;
 
-        return `📧 VALIDACIÓN EMAIL
+        bot.sendMessage(msg.chat.id, `
+📧 EMAIL
 ═══════════════════
-📨 Email: ${email}
+📨 ${email}
 ✔️ Estado: ${d.deliverability}
-═══════════════════`;
-    } catch {
-        return "❌ Error validando email";
-    }
-}
-
-// ===== MIDDLEWARE =====
-function verificarActivo(msg) {
-    if (!botActivo && msg.from.id != ADMIN_ID) {
-        bot.sendMessage(msg.chat.id, "🔴 Bot en mantenimiento");
-        return false;
-    }
-    return true;
-}
-
-// ===== COMANDOS =====
-
-bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, `👋 Hola ${msg.from.first_name}
-
-🤖 BOT ACTIVO
-
-Usa /menu`);
-});
-
-bot.onText(/\/menu/, (msg) => {
-    bot.sendMessage(msg.chat.id, `
-📲 MENÚ
-═══════════════════
-🔍 /numero +573001234567
-🌐 /ip 8.8.8.8
-📧 /email correo@gmail.com
-
-👑 Owner: @Broquicalifoxx
 ═══════════════════`);
+    } catch {
+        bot.sendMessage(msg.chat.id, "❌ Error email");
+    }
 });
 
-bot.onText(/\/numero (.+)/, async (msg, match) => {
-    if (!verificarActivo(msg)) return;
-    const res = await consultarNumero(match[1]);
-    bot.sendMessage(msg.chat.id, res);
+// ===== ERRORES =====
+bot.on("polling_error", (err) => {
+    console.log("❌ ERROR:", err.message);
 });
-
-bot.onText(/\/ip (.+)/, async (msg, match) => {
-    if (!verificarActivo(msg)) return;
-    const res = await infoIP(match[1]);
-    bot.sendMessage(msg.chat.id, res);
-});
-
-bot.onText(/\/email (.+)/, async (msg, match) => {
-    if (!verificarActivo(msg)) return;
-    const res = await validarEmail(match[1]);
-    bot.sendMessage(msg.chat.id, res);
-});
-
-// ADMIN
-bot.onText(/\/off/, (msg) => {
-    if (msg.from.id != ADMIN_ID) return;
-    botActivo = false;
-    bot.sendMessage(msg.chat.id, "🔴 Bot OFF");
-});
-
-bot.onText(/\/on/, (msg) => {
-    if (msg.from.id != ADMIN_ID) return;
-    botActivo = true;
-    bot.sendMessage(msg.chat.id, "🟢 Bot ON");
-});
-
-bot.on("polling_error", (err) => console.log("❌ ERROR:", err.message));
