@@ -1,179 +1,257 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
+const axios = require('axios');
+const { createClient } = require('@supabase/supabase-js');
 
-const token = process.env.TOKEN;
-const bot = new TelegramBot(token, { polling: true });
+// ===== BOT =====
+const bot = new TelegramBot(process.env.TOKEN, { polling: true });
 
-// CONFIG
+// ===== DB =====
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
+// ===== CONFIG =====
 let botActivo = true;
+
 const admins = [8114050673];
 const usuariosVIP = [8114050673];
+
 const owner = "@Broquicalifoxx";
 
-// ================== START ==================
+// ===== FUNCIONES =====
+const esAdmin = (id) => admins.includes(id);
+const esVIP = (id) => usuariosVIP.includes(id);
+
+// ===== LOGS =====
+async function log(user, accion, resultado) {
+    try {
+        await supabase.from("logs_consultas").insert([
+            { user_id: user, action: accion, status: "OK", details: resultado }
+        ]);
+    } catch {}
+}
+
+// ===== CONSULTA NUMERO =====
+async function consultarNumero(numero) {
+    try {
+        const res = await axios.get(
+            `https://phonevalidation.abstractapi.com/v1/?api_key=${process.env.ABSTRACT_KEY}&phone=${numero}`
+        );
+
+        return {
+            pais: res.data.country?.name,
+            operador: res.data.carrier,
+            tipo: res.data.type,
+            valido: res.data.valid,
+            fuente: "Abstract"
+        };
+
+    } catch {
+        try {
+            const res = await axios.get(
+                `https://api.numlookupapi.com/v1/validate/${numero}?apikey=${process.env.NUMLOOKUP_KEY}`
+            );
+
+            return {
+                pais: res.data.country_name,
+                operador: res.data.carrier,
+                tipo: res.data.line_type,
+                valido: res.data.valid,
+                fuente: "Numlookup"
+            };
+        } catch {
+            return { error: true };
+        }
+    }
+}
+
+// ===== IP =====
+async function consultarIP(ip) {
+    try {
+        const res = await axios.get(
+            `https://ipgeolocation.abstractapi.com/v1/?api_key=${process.env.ABSTRACT_KEY}&ip_address=${ip}`
+        );
+
+        return {
+            ciudad: res.data.city,
+            vpn: res.data.security?.is_vpn
+        };
+    } catch {
+        return { error: true };
+    }
+}
+
+// ===== EMAIL =====
+async function validarEmail(email) {
+    try {
+        const res = await axios.get(
+            `https://emailvalidation.abstractapi.com/v1/?api_key=${process.env.ABSTRACT_KEY}&email=${email}`
+        );
+
+        return res.data.deliverability;
+    } catch {
+        return "ERROR";
+    }
+}
+
+// ===== MENU =====
+function menuBotones() {
+    return {
+        reply_markup: {
+            keyboard: [
+                ["📱 Número", "🌐 IP"],
+                ["📧 Email", "⚙️ Estado"]
+            ],
+            resize_keyboard: true
+        }
+    };
+}
+
+// ===== START =====
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, `
-╔════════════════════════════╗
-   🤖 CONSULTAS PRO BOT
-╚════════════════════════════╝
+╔════════════════════╗
+   🤖 PANEL CONSULTAS
+╚════════════════════╝
 
-👑 Sistema activo
+🌍 Sistema activo
 
-📌 Comandos:
-/menu
-/estado
+👇 Usa los botones
 
+━━━━━━━━━━━━━━━━━━━
 👑 Owner: ${owner}
-    `);
+    `, menuBotones());
 });
 
-// ================== MENU ==================
-bot.onText(/\/menu/, (msg) => {
-    bot.sendMessage(msg.chat.id, `
-╔════════════════════════════╗
-        📋 MENÚ PRINCIPAL
-╚════════════════════════════╝
+// ===== MENSAJES =====
+bot.on('message', async (msg) => {
+    const text = msg.text;
+    const userId = msg.from.id;
 
-🔎 /consultar número
-📱 /nequi número
-📊 /estado
+    if (!botActivo) return;
 
-👑 Solo usuarios VIP
+    if (!esVIP(userId)) {
+        return bot.sendMessage(msg.chat.id, `❌ Solo VIP\n📞 ${owner}`);
+    }
 
-━━━━━━━━━━━━━━━━━━━━━━
-👑 Owner: ${owner}
-    `);
-});
+    // BOTONES
+    if (text === "📱 Número") {
+        return bot.sendMessage(msg.chat.id, "📱 Envía el número con +57...");
+    }
 
-// ================== ESTADO ==================
-bot.onText(/\/estado/, (msg) => {
-    bot.sendMessage(msg.chat.id, `
-╔════════════════════════════╗
-        ⚙️ ESTADO
-╚════════════════════════════╝
+    if (text === "🌐 IP") {
+        return bot.sendMessage(msg.chat.id, "🌐 Envía la IP...");
+    }
+
+    if (text === "📧 Email") {
+        return bot.sendMessage(msg.chat.id, "📧 Envía el correo...");
+    }
+
+    if (text === "⚙️ Estado") {
+        return bot.sendMessage(msg.chat.id, `
+⚙️ ESTADO
 
 🤖 Bot: ${botActivo ? "🟢 ACTIVO" : "🔴 OFF"}
-👑 Usuarios VIP: ${usuariosVIP.length}
+👑 VIP: ${usuariosVIP.length}
+🛡️ Admin: ${admins.length}
 
-━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━
 👑 Owner: ${owner}
-    `);
+        `);
+    }
+
+    // ===== NUMERO =====
+    if (text.startsWith("+")) {
+        bot.sendMessage(msg.chat.id, "🔍 Consultando número...");
+
+        const data = await consultarNumero(text);
+
+        const res = data.error ? `
+❌ SIN RESULTADO
+
+🔢 ${text}
+
+💡 Intenta otro número
+        ` : `
+╔════════════════════╗
+   📱 RESULTADO
+╚════════════════════╝
+
+🔢 ${text}
+🌍 ${data.pais || "N/A"}
+📡 ${data.operador || "N/A"}
+📱 ${data.tipo || "N/A"}
+✔️ ${data.valido ? "SI" : "NO"}
+
+📊 ${data.fuente}
+        `;
+
+        bot.sendMessage(msg.chat.id, res);
+        log(userId, "numero", text);
+    }
+
+    // ===== IP =====
+    else if (text.split(".").length === 4) {
+        bot.sendMessage(msg.chat.id, "🔍 Consultando IP...");
+
+        const data = await consultarIP(text);
+
+        const res = data.error ? "❌ Error IP" : `
+🌐 RESULTADO IP
+
+📍 Ciudad: ${data.ciudad}
+🛡️ VPN: ${data.vpn ? "SI ⚠️" : "NO"}
+        `;
+
+        bot.sendMessage(msg.chat.id, res);
+        log(userId, "ip", text);
+    }
+
+    // ===== EMAIL =====
+    else if (text.includes("@")) {
+        bot.sendMessage(msg.chat.id, "🔍 Validando email...");
+
+        const estado = await validarEmail(text);
+
+        bot.sendMessage(msg.chat.id, `
+📧 RESULTADO EMAIL
+
+📨 ${text}
+📊 Estado: ${estado}
+        `);
+
+        log(userId, "email", text);
+    }
 });
 
-// ================== ADMIN ==================
+// ===== ADMIN =====
 bot.onText(/\/on/, (msg) => {
-    if (!admins.includes(msg.from.id)) return;
+    if (!esAdmin(msg.from.id)) return;
     botActivo = true;
-
-    bot.sendMessage(msg.chat.id, `
-🟢 BOT ACTIVADO
-
-👑 Owner: ${owner}
-    `);
+    bot.sendMessage(msg.chat.id, "🟢 BOT ACTIVADO");
 });
 
 bot.onText(/\/off/, (msg) => {
-    if (!admins.includes(msg.from.id)) return;
+    if (!esAdmin(msg.from.id)) return;
     botActivo = false;
-
-    bot.sendMessage(msg.chat.id, `
-🔴 BOT DESACTIVADO
-
-👑 Owner: ${owner}
-    `);
+    bot.sendMessage(msg.chat.id, "🔴 BOT APAGADO");
 });
 
 bot.onText(/\/addvip (.+)/, (msg, match) => {
-    if (!admins.includes(msg.from.id)) return;
+    if (!esAdmin(msg.from.id)) return;
 
     const id = parseInt(match[1]);
+    if (!usuariosVIP.includes(id)) usuariosVIP.push(id);
 
-    if (!usuariosVIP.includes(id)) {
-        usuariosVIP.push(id);
-
-        bot.sendMessage(msg.chat.id, `
-✅ USUARIO AGREGADO VIP
-
-🆔 ID: ${id}
-
-👑 Owner: ${owner}
-        `);
-    }
+    bot.sendMessage(msg.chat.id, "✅ VIP agregado");
 });
 
-// ================== CONSULTA ==================
-bot.onText(/\/consultar (.+)/, (msg, match) => {
-    const userId = msg.from.id;
-    const numero = match[1];
+bot.onText(/\/delvip (.+)/, (msg, match) => {
+    if (!esAdmin(msg.from.id)) return;
 
-    if (!botActivo) {
-        return bot.sendMessage(msg.chat.id, "⛔ Bot en mantenimiento");
-    }
+    const id = parseInt(match[1]);
+    const index = usuariosVIP.indexOf(id);
 
-    if (!usuariosVIP.includes(userId)) {
-        return bot.sendMessage(msg.chat.id, `
-❌ ACCESO DENEGADO
+    if (index !== -1) usuariosVIP.splice(index, 1);
 
-👑 Solo VIP
-📞 Contacta: ${owner}
-        `);
-    }
-
-    bot.sendMessage(msg.chat.id, `
-🔍 PROCESANDO CONSULTA...
-
-📱 Número: ${numero}
-⏳ Espera un momento...
-    `);
-
-    setTimeout(() => {
-        bot.sendMessage(msg.chat.id, `
-╔════════════════════════════╗
-     📊 RESULTADO CONSULTA
-╚════════════════════════════╝
-
-🔢 Número: ${numero}
-📊 Estado: POSIBLEMENTE REGISTRADO
-
-💡 Nota:
-• Resultado estimado
-• Puede variar
-
-━━━━━━━━━━━━━━━━━━━━━━
-👑 Owner: ${owner}
-⏱️ Tiempo: 0.45s
-        `);
-    }, 2000);
-});
-
-// ================== NEQUI ==================
-bot.onText(/\/nequi (.+)/, (msg, match) => {
-    const userId = msg.from.id;
-    const numero = match[1];
-
-    if (!usuariosVIP.includes(userId)) {
-        return bot.sendMessage(msg.chat.id, `
-❌ SOLO VIP
-
-📞 Contacta: ${owner}
-        `);
-    }
-
-    const estados = ["ACTIVO", "NO REGISTRADO", "POSIBLE"];
-
-    const estado = estados[Math.floor(Math.random() * estados.length)];
-
-    bot.sendMessage(msg.chat.id, `
-╔════════════════════════════╗
-      📱 CONSULTA NEQUI
-╚════════════════════════════╝
-
-🔢 Número: ${numero}
-📊 Estado: ${estado}
-
-💡 Resultado estimado
-
-━━━━━━━━━━━━━━━━━━━━━━
-👑 Owner: ${owner}
-    `);
+    bot.sendMessage(msg.chat.id, "🗑️ VIP eliminado");
 });
