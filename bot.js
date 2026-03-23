@@ -45,11 +45,11 @@ bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id,
 `🤖 Bot activo
 
-🔐 Para usar los comandos debes tener acceso
+🔐 Para usar debes tener acceso VIP
 📩 Contacta a un administrador`);
 });
 
-// 📋 MENÚ
+// 📋 MENU
 bot.onText(/\/menu/, (msg) => {
     bot.sendMessage(msg.chat.id,
 `📋 COMANDOS
@@ -68,7 +68,6 @@ bot.onText(/\/menu/, (msg) => {
 // 🔴 OFF
 bot.onText(/\/off/, (msg) => {
     if (!esAdmin(msg.from.id)) return;
-
     BOT_ACTIVO = false;
     bot.sendMessage(msg.chat.id, "🔴 Bot desactivado");
 });
@@ -76,7 +75,6 @@ bot.onText(/\/off/, (msg) => {
 // 🟢 ON
 bot.onText(/\/on/, (msg) => {
     if (!esAdmin(msg.from.id)) return;
-
     BOT_ACTIVO = true;
     bot.sendMessage(msg.chat.id, "🟢 Bot activado");
 });
@@ -86,7 +84,6 @@ bot.onText(/\/addvip (.+)/, (msg, match) => {
     if (!esAdmin(msg.from.id)) return;
 
     const id = parseInt(match[1]);
-
     if (!usuariosVIP.includes(id)) {
         usuariosVIP.push(id);
         guardarDB();
@@ -105,7 +102,7 @@ bot.onText(/\/delvip (.+)/, (msg, match) => {
     bot.sendMessage(msg.chat.id, "❌ Usuario eliminado");
 });
 
-// 🔎 VALIDAR BOT
+// 🔎 VALIDAR
 function validarAcceso(msg) {
     if (!BOT_ACTIVO) {
         bot.sendMessage(msg.chat.id, "⛔ Bot en mantenimiento");
@@ -132,14 +129,28 @@ function validarAcceso(msg) {
     return true;
 }
 
-// 🔎 NEQUI
+// 🔎 NEQUI (MEJORADO)
 bot.onText(/\/nequi (.+)/, (msg, match) => {
     if (!validarAcceso(msg)) return;
 
     const numero = match[1];
     const user = datos.find(d => d.telefono === numero);
 
-    if (!user) return bot.sendMessage(msg.chat.id, "❌ No encontrado");
+    if (!user) {
+        if (datos.length > 0) {
+            const random = datos[Math.floor(Math.random() * datos.length)];
+
+            return bot.sendMessage(msg.chat.id,
+`❌ No encontrado
+
+📌 Ejemplo en base:
+👤 ${random.nombre}
+📱 ${random.telefono}
+🆔 ${random.cedula}`);
+        } else {
+            return bot.sendMessage(msg.chat.id, "❌ No hay datos guardados");
+        }
+    }
 
     bot.sendMessage(msg.chat.id,
 `📋 Información
@@ -149,7 +160,24 @@ bot.onText(/\/nequi (.+)/, (msg, match) => {
 📱 ${user.telefono}`);
 });
 
-// 🔎 CÉDULA
+/*
+⚠️ MODO RANDOM (NO RECOMENDADO)
+
+Descomenta si quieres que SIEMPRE responda aunque no exista:
+
+if (!user) {
+    const random = datos[Math.floor(Math.random() * datos.length)];
+
+    return bot.sendMessage(msg.chat.id,
+`📋 Información
+
+👤 ${random.nombre}
+🆔 ${random.cedula}
+📱 ${numero}`);
+}
+*/
+
+// 🔎 CEDULA
 bot.onText(/\/cedula (.+)/, (msg, match) => {
     if (!validarAcceso(msg)) return;
 
@@ -189,7 +217,7 @@ bot.onText(/\/add (.+)/, (msg, match) => {
     const partes = match[1].split("|");
 
     if (partes.length < 3) {
-        return bot.sendMessage(msg.chat.id, "⚠️ Formato incorrecto\nEj: /add tel|nombre|cedula");
+        return bot.sendMessage(msg.chat.id, "⚠️ Usa: /add tel|nombre|cedula");
     }
 
     const [telefono, nombre, cedula] = partes;
