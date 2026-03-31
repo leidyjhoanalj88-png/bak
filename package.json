@@ -1,7 +1,7 @@
 {
-  "name": "nequi-bot-bak",
+  "name": "nequibot",
   "version": "1.0.0",
-  "description": "Bot para validar nombres en Nequi",
+  "description": "Bot Nequi",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,7 +9,7 @@
   "dependencies": {
     "playwright": "1.40.0",
     "playwright-extra": "4.3.6",
-    "playwright-extra-plugin-stealth": "2.7.23",
+    "puppeteer-extra-plugin-stealth": "2.11.2",
     "telegraf": "4.15.3",
     "dotenv": "16.4.5"
   },
