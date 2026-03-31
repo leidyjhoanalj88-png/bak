@@ -9,12 +9,13 @@ chromium.use(stealth);
 // --- CONFIGURACIÓN DE IDENTIDAD ---
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const ADMIN_ID = 8114050673; // Tu ID fijo
-const ADMIN_USER = "@Broquicalifoxx"; // Tu usuario para soporte
+const ADMIN_USER = "@Broquicalifoxx"; // Tu usuario
 
 // Base de datos temporal
 let llavesGeneradas = new Set(); 
 let usuariosAutorizados = new Set([ADMIN_ID]); 
 
+// Función de consulta Nequi
 async function consultarNequi(numero) {
     let browser;
     try {
@@ -49,10 +50,19 @@ async function consultarNequi(numero) {
     finally { if (browser) await browser.close(); }
 }
 
-// --- MENSAJES DE ERROR ---
+// Mensaje de no acceso
 const msgNoAcceso = (ctx) => {
     ctx.reply(`🚫 **ACCESO DENEGADO**\n\nNo tienes una suscripción activa.\n\nPara obtener acceso, contacta al administrador:\n👤 **Soporte:** ${ADMIN_USER}`, { parse_mode: 'Markdown' });
 };
+
+// --- CONFIGURACIÓN DEL MENÚ (FLUIDEZ) ---
+bot.telegram.setMyCommands([
+    { command: 'start', description: 'Reiniciar el bot' },
+    { command: 'nequi', description: 'Consultar número (Requiere Acceso)' },
+    { command: 'registrar', description: 'Canjear llave de acceso' },
+    { command: 'genkey', description: 'Generar llave (Solo Admin)' },
+    { command: 'users', description: 'Estadísticas (Solo Admin)' }
+]);
 
 // --- COMANDOS ---
 
@@ -60,41 +70,32 @@ bot.start((ctx) => {
     ctx.reply(`꧁༺ 𝓬𝓪𝓼𝓱 𝓬𝓸𝓵 ༻꧂\n\n¡Bienvenido al bot de consultas Nequi!\n\n🔑 **Si tienes una llave:**\nUsa \`/registrar TU_LLAVE\`\n\n👤 **Soporte:** ${ADMIN_USER}`, { parse_mode: 'Markdown' });
 });
 
-// COMANDO ADMIN: Generar llaves
 bot.command('genkey', (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return msgNoAcceso(ctx);
-    
     const nuevaLlave = 'CASH-' + Math.random().toString(36).substring(2, 10).toUpperCase();
     llavesGeneradas.add(nuevaLlave);
-    
-    ctx.reply(`✅ **Llave Generada:**\n\n\`${nuevaLlave}\`\n\n_Pásala al cliente para su activación._`, { parse_mode: 'Markdown' });
+    ctx.reply(`✅ **Llave Generada:**\n\n\`${nuevaLlave}\`\n\n_Pásala al cliente._`, { parse_mode: 'Markdown' });
 });
 
-// COMANDO ADMIN: Ver usuarios activos
 bot.command('users', (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
     ctx.reply(`📊 **Estadísticas:**\n\nUsuarios Activos: ${usuariosAutorizados.size}\nLlaves sin usar: ${llavesGeneradas.size}`);
 });
 
-// COMANDO USUARIO: Registrarse
 bot.command('registrar', (ctx) => {
     const llave = ctx.message.text.split(' ')[1];
-    if (!llave) return ctx.reply('❌ Indica la llave. Ejemplo: `/registrar CASH-123XYZ`');
-    
+    if (!llave) return ctx.reply('❌ Uso: `/registrar CASH-XXXX`');
     if (llavesGeneradas.has(llave)) {
         usuariosAutorizados.add(ctx.from.id);
         llavesGeneradas.delete(llave);
-        ctx.reply('🎉 **¡ACCESO ACTIVADO!**\nYa puedes realizar tus consultas con `/nequi`.');
+        ctx.reply('🎉 **¡ACCESO ACTIVADO!**\nYa puedes usar `/nequi`.');
     } else {
-        ctx.reply('❌ La llave es incorrecta o ya fue usada.');
+        ctx.reply('❌ Llave incorrecta o usada.');
     }
 });
 
-// COMANDO CONSULTA (Protegido)
 bot.command('nequi', async (ctx) => {
-    if (!usuariosAutorizados.has(ctx.from.id)) {
-        return msgNoAcceso(ctx);
-    }
+    if (!usuariosAutorizados.has(ctx.from.id)) return msgNoAcceso(ctx);
     
     const numero = ctx.message.text.split(' ')[1];
     if (!numero || !/^\d{10}$/.test(numero)) return ctx.reply('❌ Envía un número de 10 dígitos.');
@@ -105,12 +106,11 @@ bot.command('nequi', async (ctx) => {
     if (resultado) {
         await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, `👤 **Nombre:** \`${resultado}\``, { parse_mode: 'Markdown' });
     } else {
-        await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, '❌ Sin resultados.\nIntenta de nuevo en unos segundos.');
+        await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, '❌ Sin resultados.');
     }
 });
 
-// Servidor para Railway
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => { res.end('CASH COL ONLINE'); }).listen(PORT, '0.0.0.0');
 
-bot.launch({ dropPendingUpdates: true }).then(() => console.log("🚀 Cash Col con sistema de acceso activo"));
+bot.launch({ dropPendingUpdates: true }).then(() => console.log("🚀 Menú configurado y Bot Online"));
