@@ -1,7 +1,7 @@
 {
   "name": "nequibot",
   "version": "1.0.0",
-  "description": "Bot Nequi con Playwright",
+  "description": "Bot para validar nombres en Nequi",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
