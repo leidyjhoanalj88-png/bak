@@ -1,11 +1,9 @@
 {
-  "name": "nequibot",
-  "version": "1.0.0",
-  "description": "Bot Nequi con Playwright Optimizado",
+  "name": "nequibot-mobile",
+  "version": "1.1.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "postinstall": "npx playwright install chromium --with-deps"
+    "start": "node index.js"
   },
   "dependencies": {
     "playwright-chromium": "^1.40.0",
