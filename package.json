@@ -1,0 +1,14 @@
+{
+  "name": "nequi-bot-stealth",
+  "version": "1.0.0",
+  "description": "Bot para validación de nombres en Nequi",
+  "main": "index.js",
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "playwright-extra": "^4.3.6",
+    "playwright-extra-plugin-stealth": "^2.7.22"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
