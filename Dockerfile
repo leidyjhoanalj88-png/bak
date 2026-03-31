@@ -1,25 +1,31 @@
-# 1. Usamos la imagen oficial de Playwright
+# 1. Usamos la imagen oficial de Playwright (incluye navegadores y Linux Jammy)
 FROM mcr.microsoft.com/playwright:v1.40.0-jammy
 
-# 2. Variables de entorno para ahorrar RAM y evitar descargas
+# 2. Variables de entorno para ahorrar RAM y evitar descargas pesadas
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV NODE_ENV=production
-# Esto limita la memoria que NPM puede usar durante la instalación
-ENV NPM_CONFIG_MEMORY_LIMIT=400MB 
+ENV NPM_CONFIG_LOGLEVEL=warn
 
+# 3. Directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# 3. Copiar solo el package.json primero
-COPY package.json ./
+# 4. Copiamos el package.json primero
+# Nota: Si tienes un package-lock.json local que esté fallando, 
+# el comando siguiente lo ignorará para evitar conflictos de integridad.
+COPY package*.json ./
 
-# 4. Instalación ultra-ligera
-# --no-scripts evita que Playwright intente configurar cosas pesadas
-# --production evita instalar librerías de desarrollo
-RUN npm install --production --no-scripts --no-audit --no-fund
+# 5. INSTALACIÓN DE FUERZA BRUTA (Optimizada para 512MB de RAM en Render)
+# - Borramos cualquier rastro de archivos lock previos
+# - Instalamos solo lo necesario para producción
+# - Ignoramos scripts de post-instalación que consumen mucha CPU
+RUN rm -rf package-lock.json node_modules && \
+    npm install --production --no-scripts --no-audit --no-fund --unsafe-perm
 
-# 5. Copiar el resto del bot
+# 6. Copiamos el resto del código del bot
 COPY . .
 
-# 6. Comando de inicio (Usamos el puerto que Render asigna automáticamente)
+# 7. Exponemos el puerto (Render usa el 3000 por defecto o el que asignes en ENV)
 EXPOSE 3000
+
+# 8. Comando para arrancar el bot
 CMD ["node", "index.js"]
