@@ -1,45 +1,32 @@
 require('dotenv').config(); 
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf'); // Importamos Markup
 const { chromium } = require('playwright-extra');
 const stealth = require('puppeteer-extra-plugin-stealth')(); 
 const http = require('http');
 
 chromium.use(stealth);
 
-// --- CONFIGURACIÓN DE IDENTIDAD ---
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const ADMIN_ID = 8114050673; // Tu ID fijo
-const ADMIN_USER = "@Broquicalifoxx"; // Tu usuario
+const ADMIN_ID = 8114050673; 
+const ADMIN_USER = "@Broquicalifoxx"; 
 
-// Base de datos temporal
 let llavesGeneradas = new Set(); 
 let usuariosAutorizados = new Set([ADMIN_ID]); 
 
-// Función de consulta Nequi
+// Función de consulta (Se mantiene igual)
 async function consultarNequi(numero) {
     let browser;
     try {
-        browser = await chromium.launch({ 
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        });
-        const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
-            viewport: { width: 390, height: 844 },
-            isMobile: true
-        });
+        browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] });
+        const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Linux; Android 13)', isMobile: true });
         const page = await context.newPage();
         await page.route('**/*.{png,jpg,jpeg,css,woff,svg,gif}', route => route.abort());
-
         await page.goto('https://recarga.nequi.com.co/recarga-individual', { waitUntil: 'networkidle', timeout: 30000 });
-        
         await page.fill('input#tel-recarga', numero);
         await page.fill('input#confirm-tel-recarga', numero);
         await page.fill('input#monto-recarga', '5000');
-        
-        await page.waitForTimeout(2500); 
+        await page.waitForTimeout(2000); 
         await page.dispatchEvent('button#btn-continuar', 'click');
-
         const nombreSelector = '.nombre-cliente-pago';
         try {
             await page.waitForSelector(nombreSelector, { state: 'visible', timeout: 15000 });
@@ -50,67 +37,77 @@ async function consultarNequi(numero) {
     finally { if (browser) await browser.close(); }
 }
 
-// Mensaje de no acceso
-const msgNoAcceso = (ctx) => {
-    ctx.reply(`🚫 **ACCESO DENEGADO**\n\nNo tienes una suscripción activa.\n\nPara obtener acceso, contacta al administrador:\n👤 **Soporte:** ${ADMIN_USER}`, { parse_mode: 'Markdown' });
-};
+// --- TECLADOS (BOTONES) ---
+const menuPrincipal = Markup.keyboard([
+    ['🔍 Realizar Consulta', '🔑 Registrar Llave'],
+    ['👤 Soporte / Comprar']
+]).resize();
 
-// --- CONFIGURACIÓN DEL MENÚ (FLUIDEZ) ---
-bot.telegram.setMyCommands([
-    { command: 'start', description: 'Reiniciar el bot' },
-    { command: 'nequi', description: 'Consultar número (Requiere Acceso)' },
-    { command: 'registrar', description: 'Canjear llave de acceso' },
-    { command: 'genkey', description: 'Generar llave (Solo Admin)' },
-    { command: 'users', description: 'Estadísticas (Solo Admin)' }
-]);
+const menuAdmin = Markup.keyboard([
+    ['🔍 Realizar Consulta'],
+    ['🎫 Generar Key', '📊 Stats']
+]).resize();
 
 // --- COMANDOS ---
 
 bot.start((ctx) => {
-    ctx.reply(`꧁༺ 𝓬𝓪𝓼𝓱 𝓬𝓸𝓵 ༻꧂\n\n¡Bienvenido al bot de consultas Nequi!\n\n🔑 **Si tienes una llave:**\nUsa \`/registrar TU_LLAVE\`\n\n👤 **Soporte:** ${ADMIN_USER}`, { parse_mode: 'Markdown' });
+    const teclado = ctx.from.id === ADMIN_ID ? menuAdmin : menuPrincipal;
+    ctx.reply(`꧁༺ 𝓬𝓪𝓼𝓱 𝓬𝓸𝓵 ༻꧂\n\n¡Bienvenido! Selecciona una opción abajo:`, teclado);
 });
 
-bot.command('genkey', (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return msgNoAcceso(ctx);
+// Escuchar los textos de los botones
+bot.hears('🔍 Realizar Consulta', (ctx) => {
+    if (!usuariosAutorizados.has(ctx.from.id)) {
+        return ctx.reply(`🚫 No tienes acceso. Contacta a ${ADMIN_USER}`);
+    }
+    ctx.reply('🔢 Envía el número de 10 dígitos directamente:\n(Ejemplo: `3001234567`)', { parse_mode: 'Markdown' });
+});
+
+bot.hears('🔑 Registrar Llave', (ctx) => {
+    ctx.reply('Escribe: `/registrar TU_LLAVE`', { parse_mode: 'Markdown' });
+});
+
+bot.hears('👤 Soporte / Comprar', (ctx) => {
+    ctx.reply(`👤 Contacto oficial: ${ADMIN_USER}`);
+});
+
+bot.hears('🎫 Generar Key', (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
     const nuevaLlave = 'CASH-' + Math.random().toString(36).substring(2, 10).toUpperCase();
     llavesGeneradas.add(nuevaLlave);
-    ctx.reply(`✅ **Llave Generada:**\n\n\`${nuevaLlave}\`\n\n_Pásala al cliente._`, { parse_mode: 'Markdown' });
+    ctx.reply(`✅ Llave: \`${nuevaLlave}\``, { parse_mode: 'Markdown' });
 });
 
-bot.command('users', (ctx) => {
+bot.hears('📊 Stats', (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    ctx.reply(`📊 **Estadísticas:**\n\nUsuarios Activos: ${usuariosAutorizados.size}\nLlaves sin usar: ${llavesGeneradas.size}`);
+    ctx.reply(`Usuarios: ${usuariosAutorizados.size}\nKeys: ${llavesGeneradas.size}`);
 });
 
-bot.command('registrar', (ctx) => {
-    const llave = ctx.message.text.split(' ')[1];
-    if (!llave) return ctx.reply('❌ Uso: `/registrar CASH-XXXX`');
-    if (llavesGeneradas.has(llave)) {
-        usuariosAutorizados.add(ctx.from.id);
-        llavesGeneradas.delete(llave);
-        ctx.reply('🎉 **¡ACCESO ACTIVADO!**\nYa puedes usar `/nequi`.');
-    } else {
-        ctx.reply('❌ Llave incorrecta o usada.');
-    }
-});
-
-bot.command('nequi', async (ctx) => {
-    if (!usuariosAutorizados.has(ctx.from.id)) return msgNoAcceso(ctx);
+// Lógica para detectar números sueltos (Fluidez total)
+bot.on('text', async (ctx) => {
+    const texto = ctx.message.text;
     
-    const numero = ctx.message.text.split(' ')[1];
-    if (!numero || !/^\d{10}$/.test(numero)) return ctx.reply('❌ Envía un número de 10 dígitos.');
+    // Si es un número de 10 dígitos y está autorizado
+    if (/^\d{10}$/.test(texto)) {
+        if (!usuariosAutorizados.has(ctx.from.id)) return ctx.reply(`🚫 Sin acceso. Escribe a ${ADMIN_USER}`);
+        
+        const espera = await ctx.reply(`⏳ Consultando ${texto}...`);
+        const resultado = await consultarNequi(texto);
 
-    const espera = await ctx.reply(`⏳ Consultando ${numero}...`);
-    const resultado = await consultarNequi(numero);
-
-    if (resultado) {
-        await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, `👤 **Nombre:** \`${resultado}\``, { parse_mode: 'Markdown' });
-    } else {
-        await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, '❌ Sin resultados.');
+        if (resultado) {
+            await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, `👤 **Nombre:** \`${resultado}\``, { parse_mode: 'Markdown' });
+        } else {
+            await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, '❌ Sin resultados.');
+        }
     }
 });
+
+// Forzar Menú de comandos azul
+bot.telegram.setMyCommands([
+    { command: 'start', description: 'Abrir Menú de Botones' }
+]);
 
 const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => { res.end('CASH COL ONLINE'); }).listen(PORT, '0.0.0.0');
+http.createServer((req, res) => { res.end('OK'); }).listen(PORT, '0.0.0.0');
 
-bot.launch({ dropPendingUpdates: true }).then(() => console.log("🚀 Menú configurado y Bot Online"));
+bot.launch({ dropPendingUpdates: true }).then(() => console.log("🚀 Bot con Botones Activo"));
