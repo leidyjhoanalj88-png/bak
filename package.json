@@ -1,7 +1,7 @@
 {
-  "name": "nequi-bot-telegram",
+  "name": "nequi-bot-render",
   "version": "1.0.0",
-  "description": "Bot de Telegram para consultar nombres en Nequi",
+  "description": "Bot Nequi para Render",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
