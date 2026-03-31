@@ -1,20 +1,26 @@
-# Usamos la imagen oficial que ya trae todo lo de Playwright
+# 1. Usamos la imagen oficial (basada en Ubuntu Jammy)
 FROM mcr.microsoft.com/playwright:v1.40.0-jammy
 
-# Directorio de trabajo
+# 2. ESTA LÍNEA ES CLAVE: Evita que el instalador intente descargar
+# los navegadores otra vez, porque ya vienen dentro de la imagen.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+# 3. Directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de configuración
-COPY package*.json ./
+# 4. Copiamos los archivos de configuración
+# Asegúrate de que el archivo se llame exactamente package.json
+COPY package.json ./
 
-# Instalar dependencias
-RUN npm install
+# 5. Instalamos las dependencias
+# Usamos --no-package-lock para evitar conflictos si no tienes el archivo .lock
+RUN npm install --no-package-lock
 
-# Copiar el código del bot
+# 6. Copiamos el resto del código
 COPY . .
 
-# Exponer el puerto que usa Render
+# 7. Puerto para Render u otros servicios
 EXPOSE 3000
 
-# Arrancar el bot
-CMD ["npm", "start"]
+# 8. Comando para iniciar el bot
+CMD ["node", "index.js"]
