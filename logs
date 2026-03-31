@@ -1,4 +1,0 @@
-mkdir logs src
-touch .env database.json .gitignore
-npm init -y
-npm install node-telegram-bot-api axios dotenv fs-extra
