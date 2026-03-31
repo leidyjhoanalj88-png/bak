@@ -1,7 +1,7 @@
 {
   "name": "nequibot",
   "version": "1.0.0",
-  "description": "Bot Nequi",
+  "description": "Bot Nequi con Playwright",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
