@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config(); // <-- Corregido: r minúscula
 const { Telegraf } = require('telegraf');
 const { chromium } = require('playwright-extra');
 const stealth = require('playwright-extra-plugin-stealth')();
@@ -34,14 +34,6 @@ async function consultarNequi(numero) {
                 '--single-process',
                 '--disable-gpu'
             ]
-            // Si tienes proxy, descomenta la línea de abajo y rellena en el .env
-            /*
-            proxy: {
-                server: process.env.PROXY_SERVER,
-                username: process.env.PROXY_USERNAME,
-                password: process.env.PROXY_PASSWORD
-            }
-            */
         });
 
         const context = await browser.newContext({
