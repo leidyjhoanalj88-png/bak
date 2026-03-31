@@ -1,68 +1,45 @@
-require('dotenv').config(); 
-const { Telegraf } = require('telegraf');
-const { chromium } = require('playwright-extra');
-// IMPORTANTE: Usamos puppeteer-extra-plugin-stealth (es compatible con playwright)
-const stealth = require('puppeteer-extra-plugin-stealth')(); 
-const http = require('http');
+// --- LÓGICA DE TELEGRAM CON COMANDO /nequi ---
 
-// Activar modo sigilo
-chromium.use(stealth);
-
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const MI_ID_AUTORIZADO = parseInt(process.env.MI_ID_AUTORIZADO);
-const PORT = process.env.PORT || 3000;
-
-if (!BOT_TOKEN) {
-    console.error("❌ ERROR: No se encontró BOT_TOKEN.");
-    process.exit(1);
-}
-
-const bot = new Telegraf(BOT_TOKEN);
-
-async function consultarNequi(numero) {
-    let browser;
-    try {
-        browser = await chromium.launch({ 
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process']
-        });
-        const context = await browser.newContext();
-        const page = await context.newPage();
-        await page.goto('https://recarga.nequi.com.co/', { waitUntil: 'networkidle', timeout: 60000 });
-        
-        await page.fill('input#tel-recarga', numero); 
-        await page.fill('input#confirm-tel-recarga', numero);
-        await page.fill('input#monto-recarga', '5000');
-        await page.click('button#btn-continuar');
-
-        await page.waitForSelector('.nombre-cliente-pago', { timeout: 20000 });
-        return await page.innerText('.nombre-cliente-pago');
-    } catch (error) {
-        console.error("❌ Error Playwright:", error.message);
-        return null;
-    } finally {
-        if (browser) await browser.close();
-    }
-}
-
-bot.on('text', async (ctx) => {
-    if (ctx.from.id !== MI_ID_AUTORIZADO) return ctx.reply('🚫 No autorizado.');
-    const numero = ctx.message.text.trim();
-    if (!/^\d{10}$/.test(numero)) return ctx.reply('⚠️ Envía 10 números.');
-    
-    const msg = await ctx.reply(`⏳ Consultando ${numero}...`);
-    const resultado = await consultarNequi(numero);
-    
-    if (resultado) {
-        await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, `👤 *Nombre:*\n\`${resultado.trim()}\``, { parse_mode: 'Markdown' });
-    } else {
-        await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, '❌ Error o número no existe.');
-    }
+// Comando inicial
+bot.start((ctx) => {
+    if (ctx.from.id !== MI_ID_AUTORIZADO) return;
+    ctx.reply('✅ Bot Nequi Activo.\n\nUso: /nequi 3217326803');
 });
 
-http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end('Bot Nequi Vivo');
-}).listen(PORT, '0.0.0.0');
+// Escuchar específicamente el comando /nequi
+bot.command('nequi', async (ctx) => {
+    // Filtro de seguridad por ID
+    if (ctx.from.id !== MI_ID_AUTORIZADO) {
+        return ctx.reply('🚫 No tienes autorización.');
+    }
 
-bot.launch().then(() => console.log("🚀 Bot conectado."));
+    // Extraer el número después del comando /nequi
+    const args = ctx.message.text.split(' ');
+    const numero = args[1] ? args[1].trim() : null;
+
+    // Validar que se haya enviado algo y que sean 10 dígitos
+    if (!numero || !/^\d{10}$/.test(numero)) {
+        return ctx.reply('⚠️ Uso incorrecto. Ejemplo:\n/nequi 3217326803');
+    }
+
+    const msgEspera = await ctx.reply(`⏳ Consultando ${numero} en Nequi...`);
+
+    const resultado = await consultarNequi(numero);
+
+    if (resultado) {
+        await ctx.telegram.editMessageText(
+            ctx.chat.id, 
+            msgEspera.message_id, 
+            null, 
+            `👤 *Nombre Encontrado:*\n\n\`${resultado.trim()}\``, 
+            { parse_mode: 'Markdown' }
+        );
+    } else {
+        await ctx.telegram.editMessageText(
+            ctx.chat.id, 
+            msgEspera.message_id, 
+            null, 
+            '❌ No se pudo obtener el nombre.\n\nNúmero inexistente o error de conexión.'
+        );
+    }
+});
