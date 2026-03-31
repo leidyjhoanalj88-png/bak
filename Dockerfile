@@ -1,15 +1,20 @@
-# Usamos la imagen oficial de Playwright
+# Usamos la imagen oficial que ya trae todo lo de Playwright
 FROM mcr.microsoft.com/playwright:v1.40.0-jammy
 
-# Directorio de la app
-WORKDIR /usr/src/app
+# Directorio de trabajo
+WORKDIR /app
 
-# Instalar dependencias primero (para aprovechar el cache de Docker)
+# Copiar archivos de configuración
 COPY package*.json ./
+
+# Instalar dependencias
 RUN npm install
 
-# Copiar el resto del código
+# Copiar el código del bot
 COPY . .
 
-# Comando por defecto para correr el bot
-CMD [ "npm", "start" ]
+# Exponer el puerto que usa Render
+EXPOSE 3000
+
+# Arrancar el bot
+CMD ["npm", "start"]
