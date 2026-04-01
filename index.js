@@ -1,4 +1,4 @@
-// --- FUNCIÓN DE CONSULTA CON LOGIN DE ERRORES (DEBUG) ---
+// --- FUNCIÓN DE CONSULTA POR PSE (LA RUTA QUE NO BLOQUEA) ---
 async function consultarNequi(numero) {
     let browser;
     let status = "Iniciando...";
@@ -11,54 +11,56 @@ async function consultarNequi(numero) {
         const context = await browser.newContext({ 
             userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
             viewport: { width: 390, height: 844 },
-            isMobile: true
+            isMobile: true,
+            hasTouch: true
         });
 
         const page = await context.newPage();
         
-        status = "Cargando Nequi...";
-        // Intentamos cargar la página con un tiempo de espera más largo
-        await page.goto('https://recarga.nequi.com.co/recarga-individual', { 
-            waitUntil: 'domcontentloaded', 
+        // PASO 1: Ir a PSE
+        status = "Entrando a PSE...";
+        await page.goto('https://www.psepagos.co/psehostingui/CategoryDetails.aspx?ID=2', { 
+            waitUntil: 'networkidle', 
             timeout: 60000 
         });
 
-        status = "Buscando campos del formulario...";
-        // Verificamos si el input existe antes de escribir
-        const inputExiste = await page.isVisible('input#tel-recarga');
+        // PASO 2: Llenar el campo de celular en PSE
+        status = "Llenando celular en PSE...";
+        // Nota: En PSE el ID suele ser diferente, lo buscamos por el tipo de input
+        const inputCelular = 'input[type="tel"], input[name*="celular"], .form-control';
+        await page.waitForSelector(inputCelular, { timeout: 20000 });
+        await page.fill(inputCelular, numero);
         
-        if (!inputExiste) {
-            // Si no existe, capturamos el título de la página para ver qué hay ahí
-            const titulo = await page.title();
-            return { ok: false, error: `El formulario no cargó. Título de página: ${titulo}` };
-        }
+        // PASO 3: Click en el botón para avanzar y ver el nombre
+        status = "Buscando titular...";
+        await page.keyboard.press('Enter'); // A veces el botón cambia de ID, Enter es más seguro
 
-        status = "Escribiendo número...";
-        await page.fill('input#tel-recarga', numero);
-        await page.fill('input#confirm-tel-recarga', numero);
-        await page.fill('input#monto-recarga', '5000');
-        
-        status = "Dando click en continuar...";
-        await page.click('button#btn-continuar');
+        // PASO 4: Capturar el nombre del titular
+        // En PSE, el nombre suele aparecer en un resumen antes de pagar
+        status = "Esperando nombre en resumen...";
+        await page.waitForTimeout(3000); // Esperamos a que cargue la respuesta
 
-        // Esperar el resultado
-        status = "Esperando respuesta de Nequi...";
-        const nombreSelector = '.nombre-cliente-pago';
-        
-        try {
-            await page.waitForSelector(nombreSelector, { state: 'visible', timeout: 10000 });
-            const nombre = await page.innerText(nombreSelector);
+        // Intentamos extraer cualquier texto que parezca el nombre del cliente
+        const nombre = await page.evaluate(() => {
+            // Buscamos etiquetas comunes donde PSE pone el nombre del dueño de la cuenta
+            const elementos = document.querySelectorAll('span, td, div, label');
+            for (let el of elementos) {
+                if (el.innerText.includes('Titular') || el.innerText.includes('Nombre')) {
+                    return el.innerText;
+                }
+            }
+            return null;
+        });
+
+        if (nombre) {
             return { ok: true, data: nombre.trim() };
-        } catch (e) {
-            // Si no aparece el nombre, verificamos si hay un mensaje de error visible en la web
-            const errorVisible = await page.isVisible('.error-message');
-            return { ok: false, error: errorVisible ? "Nequi mostró error de recarga (IP bloqueada)" : "No se encontró el nombre del titular" };
+        } else {
+            return { ok: false, error: "PSE cargó pero no mostró el nombre. (Número inválido o cambio de interfaz)" };
         }
 
     } catch (error) { 
-        // Este log te dirá el error técnico real en la consola de Railway
-        console.error(`🔴 ERROR CRÍTICO en [${status}]:`, error.message);
-        return { ok: false, error: `Error en fase: ${status}. Detalle: ${error.message.substring(0, 50)}...` }; 
+        console.error(`Error en fase [${status}]:`, error.message);
+        return { ok: false, error: `Fallo en PSE: ${status}` }; 
     } finally { 
         if (browser) await browser.close(); 
     }
