@@ -13,7 +13,7 @@ const ADMIN_USER = "@Broquicalifoxx";
 let llavesGeneradas = new Set(); 
 let usuariosAutorizados = new Set([ADMIN_ID]); 
 
-// --- FUNCIÓN DE CONSULTA MAESTRA (PSE + DISFRAZ IPHONE) ---
+// --- FUNCIÓN DE CONSULTA MAESTRA (PSE + DETECCIÓN DE BLOQUEO) ---
 async function consultarNequi(numero) {
     let browser;
     let status = "Iniciando...";
@@ -28,66 +28,64 @@ async function consultarNequi(numero) {
             viewport: { width: 390, height: 844 },
             deviceScaleFactor: 3,
             isMobile: true,
-            hasTouch: true,
-            locale: 'es-419',
-            timezoneId: 'America/Bogota'
+            hasTouch: true
         });
 
         const page = await context.newPage();
         
-        // Bloqueo de basura para velocidad
-        await page.route('**/*.{png,jpg,jpeg,css,woff,svg,gif}', route => route.abort());
-
-        status = "Entrando a PSE (ID=2)...";
+        status = "Entrando a PSE...";
         await page.goto('https://www.psepagos.co/psehostingui/CategoryDetails.aspx?ID=2', { 
             waitUntil: 'domcontentloaded', 
             timeout: 60000 
         });
 
+        // Verificación de Bloqueo de IP
+        const contenido = await page.content();
+        if (contenido.includes("Access Denied") || contenido.includes("Cloudflare")) {
+            return { ok: false, error: "IP de Railway Bloqueada por PSE. Usa Localtonet." };
+        }
+
         status = "Buscando campo de celular...";
-        // Selector universal: Busca por tipo tel, nombre celular o clases de formulario comunes
-        const selectorUniversal = 'input[type="tel"], input[name*="celular"], input#txtCelular, .form-control';
-        await page.waitForSelector(selectorUniversal, { timeout: 20000 });
+        // Buscamos cualquier input que sea visible para escribir
+        const inputSelector = 'input[type="tel"], input[type="text"], .form-control';
+        try {
+            await page.waitForSelector(inputSelector, { visible: true, timeout: 15000 });
+        } catch (e) {
+            return { ok: false, error: "No se encontró el formulario en la página." };
+        }
 
-        status = "Escribiendo número (Simulación iPhone)...";
-        await page.click(selectorUniversal);
-        await page.type(selectorUniversal, numero, { delay: 120 });
+        status = "Escribiendo número...";
+        await page.click(inputSelector);
+        await page.type(inputSelector, numero, { delay: 150 });
         
-        status = "Enviando consulta...";
+        status = "Consultando titular...";
         await page.keyboard.press('Enter'); 
-        await page.waitForTimeout(5000); // Tiempo para que PSE procese el nombre
+        await page.waitForTimeout(5000); // Espera para que cargue el nombre
 
-        status = "Extrayendo titular...";
+        status = "Extrayendo nombre...";
         const resultado = await page.evaluate(() => {
-            // Buscamos cualquier texto en la página que parezca un nombre completo (Mayúsculas)
-            const textoPagina = document.body.innerText;
-            const lineas = textoPagina.split('\n');
-            // Buscamos líneas que contengan palabras clave de PSE
-            for (let linea of lineas) {
-                if (linea.includes('Titular') || linea.includes('Nombre') || linea.includes('CLIENTE')) {
-                    return linea.trim();
-                }
-            }
-            // Si no encuentra etiquetas, busca bloques largos de texto en Mayúsculas
-            const matchMayus = textoPagina.match(/[A-ZÁÉÍÓÚÑ\s]{12,60}/g);
-            return matchMayus ? matchMayus[0].trim() : null;
+            const body = document.body.innerText;
+            // Busca patrones de nombres después de palabras clave típicas de PSE
+            const regex = /(?:TITULAR|CLIENTE|NOMBRE|PAGO A:)\s*([A-ZÁÉÍÓÚÑ\s]{10,60})/i;
+            const match = body.match(regex);
+            return match ? match[0].trim() : null;
         });
 
         if (resultado) {
             return { ok: true, data: resultado };
         } else {
-            return { ok: false, error: "PSE cargó pero el nombre no se visualizó." };
+            return { ok: false, error: "PSE cargó pero no mostró el nombre del titular." };
         }
 
     } catch (error) { 
-        console.error(`🔴 Error en fase [${status}]:`, error.message);
+        console.error(`Error: ${error.message}`);
         return { ok: false, error: `Fallo en: ${status}` }; 
     } finally { 
         if (browser) await browser.close(); 
     }
 }
 
-// --- COMANDOS Y LÓGICA DEL BOT ---
+// --- COMANDOS DEL BOT ---
 
 bot.start((ctx) => {
     const teclado = ctx.from.id === ADMIN_ID ? 
@@ -97,7 +95,6 @@ bot.start((ctx) => {
     ctx.reply(`꧁༺ 𝓬𝓪𝓼𝓱 𝓬𝓸𝓵 ༻꧂\n\nBienvenido @${ctx.from.username || 'Admin'}.`, teclado);
 });
 
-// COMANDO PRINCIPAL /nequi
 bot.command('nequi', async (ctx) => {
     if (!usuariosAutorizados.has(ctx.from.id)) return ctx.reply("🚫 No tienes acceso.");
     
@@ -111,25 +108,23 @@ bot.command('nequi', async (ctx) => {
     const res = await consultarNequi(numero);
 
     if (res.ok) {
-        await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, `👤 **Titular:** \n\`${res.data}\``, { parse_mode: 'Markdown' });
+        await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, `👤 **Resultado:** \n\`${res.data}\``, { parse_mode: 'Markdown' });
     } else {
-        await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, `❌ **Error:** ${res.error}\n⚠️ Si persiste, activa Localtonet.`);
+        await ctx.telegram.editMessageText(ctx.chat.id, espera.message_id, null, `❌ **Error:** ${res.error}`);
     }
 });
 
-// REGISTRO DE LLAVES
 bot.command('registrar', (ctx) => {
     const key = ctx.message.text.split(' ')[1];
     if (llavesGeneradas.has(key)) {
         llavesGeneradas.delete(key);
         usuariosAutorizados.add(ctx.from.id);
-        ctx.reply("✅ Acceso Activado Correctamente.", Markup.keyboard([['🔍 Realizar Consulta']]).resize());
+        ctx.reply("✅ Acceso Activado Correctamente.");
     } else {
-        ctx.reply("❌ Key inválida o ya usada.");
+        ctx.reply("❌ Key inválida.");
     }
 });
 
-// FUNCIONES DE ADMIN
 bot.hears('🎫 Generar Key', (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
     const key = 'CASH-' + Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -139,22 +134,21 @@ bot.hears('🎫 Generar Key', (ctx) => {
 
 bot.hears('📊 Stats', (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    ctx.reply(`📊 **Estadísticas:**\nUsuarios: ${usuariosAutorizados.size}\nKeys: ${llavesGeneradas.size}`);
+    ctx.reply(`📊 Usuarios: ${usuariosAutorizados.size} | Keys: ${llavesGeneradas.size}`);
 });
 
 bot.hears('🔍 Realizar Consulta', (ctx) => {
-    ctx.reply("Escribe el comando: `/nequi NUMERO`", { parse_mode: 'Markdown' });
+    ctx.reply("Escribe: `/nequi NUMERO`", { parse_mode: 'Markdown' });
 });
 
-// Configuración del Menú Azul
+// Menú Azul
 bot.telegram.setMyCommands([
     { command: 'start', description: 'Menú principal' },
-    { command: 'nequi', description: 'Consultar (Ej: /nequi 3001234567)' },
-    { command: 'registrar', description: 'Activar acceso' }
+    { command: 'nequi', description: 'Consultar número' },
+    { command: 'registrar', description: 'Activar Key' }
 ]);
 
-// Servidor Keep-Alive
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => res.end('Bot Online')).listen(PORT);
 
-bot.launch({ dropPendingUpdates: true }).then(() => console.log("🚀 Cash Col Bot Actualizado en Railway"));
+bot.launch({ dropPendingUpdates: true }).then(() => console.log("🚀 Cash Col Bot Listo"));
